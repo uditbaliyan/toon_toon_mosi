@@ -4,6 +4,7 @@ ToonToon: Unified Animation Pipeline Orchestrator
 """
 
 import argparse
+import os
 import signal
 import sys
 import time
@@ -11,7 +12,7 @@ from pathlib import Path
 import logging
 import json
 
-from src.aligner import GentleAligner
+from src.aligner import GentleAligner, MFAAligner
 from src.compositor import FFmpegCompositor
 from src.config import (
     BACKGROUND_MUSIC_VOLUME,
@@ -27,19 +28,26 @@ from src.subtitle_generator import generate_ass
 # ---------------------------------------------------------------------------
 # Logging Configuration
 # ---------------------------------------------------------------------------
+DEFAULT_MFA_BIN = "/tmp/miniforge/envs/mfa/bin/mfa"
+
+# FileHandler below raises FileNotFoundError on a fresh clone without logs/
+Path("logs").mkdir(exist_ok=True)
+
 logger = logging.getLogger("ToonToon")
 logger.setLevel(logging.DEBUG)  # Capture everything down to DEBUG
 
 # Prevent duplicate handlers if script is imported or re-run
 if not logger.handlers:
     # Create file handler for detailed pipeline traces
-    file_handler = logging.FileHandler('logs/toontoon_pipeline.log', encoding='utf-8')
+    file_handler = logging.FileHandler("logs/toontoon_pipeline.log", encoding="utf-8")
     file_handler.setLevel(logging.DEBUG)
-    
+
     # Create formatter with timestamps and log levels
-    formatter = logging.Formatter('%(asctime)s - [%(levelname)s] - %(name)s - %(message)s')
+    formatter = logging.Formatter(
+        "%(asctime)s - [%(levelname)s] - %(name)s - %(message)s"
+    )
     file_handler.setFormatter(formatter)
-    
+
     logger.addHandler(file_handler)
 
 
@@ -53,17 +61,18 @@ def _handle_interrupt(sig, frame):
     msg = f"System Interruption Signal ({sig}) received! Shutting down FFmpeg..."
     print(f"\n\n[ToonToon] {msg}", flush=True)
     logger.warning(msg)
-    
+
     if _compositor is not None:
         logger.info("Terminating active FFmpeg compositor process...")
         _compositor.terminate()
-        
+
     sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
 # Main Pipeline
 # ---------------------------------------------------------------------------
+
 
 def main():
     global _compositor
@@ -72,22 +81,43 @@ def main():
         description="ToonToon: High-Performance Animation Pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--script",       required=True,  help="Annotated script (.txt)")
-    parser.add_argument("--audio",        required=True,  help="Voice audio track (.wav)")
-    parser.add_argument("--character",    default="cary", help="Character assets folder name")
-    parser.add_argument("--output",       required=True,  help="Output video (.mp4)")
-    parser.add_argument("--bg_video",     default=None,   help="Background video (optional)")
-    parser.add_argument("--bg_music",     default=None,   help="Background music (optional)")
+    parser.add_argument("--script", required=True, help="Annotated script (.txt)")
+    parser.add_argument("--audio", required=True, help="Voice audio track (.wav)")
+    parser.add_argument(
+        "--character", default="cary", help="Character assets folder name"
+    )
+    parser.add_argument("--output", required=True, help="Output video (.mp4)")
+    parser.add_argument("--bg_video", default=None, help="Background video (optional)")
+    parser.add_argument("--bg_music", default=None, help="Background music (optional)")
     parser.add_argument("--music_volume", default=BACKGROUND_MUSIC_VOLUME, type=float)
-    parser.add_argument("--use_blender",  default="true", choices=["true", "false"],
-                        help="Use MouthBlender coarticulation")
-    parser.add_argument("--subtitles",    default="true", choices=["true", "false"],
-                        help="Burn JarToon-style subtitles into the output video")
+    parser.add_argument(
+        "--use_blender",
+        default="true",
+        choices=["true", "false"],
+        help="Use MouthBlender coarticulation",
+    )
+    parser.add_argument(
+        "--subtitles",
+        default="true",
+        choices=["true", "false"],
+        help="Burn JarToon-style subtitles into the output video",
+    )
+    parser.add_argument(
+        "--aligner",
+        default="mfa",
+        choices=["mfa", "gentle"],
+        help="Forced-aligner backend",
+    )
+    parser.add_argument(
+        "--mfa_bin",
+        default=os.environ.get("MFA_BIN", DEFAULT_MFA_BIN),
+        help="Full path to the env's `mfa` executable (mfa backend only; or set $MFA_BIN)",
+    )
     args = parser.parse_args()
-    
+
     # Parse string flags to booleans
     args.use_blender = args.use_blender.lower() == "true"
-    args.subtitles   = args.subtitles.lower()   == "true"
+    args.subtitles = args.subtitles.lower() == "true"
 
     logger.info("================ Pipeline Initialization ================")
     logger.info(f"Arguments parsed: {vars(args)}")
@@ -97,13 +127,13 @@ def main():
     signal.signal(signal.SIGTERM, _handle_interrupt)
 
     script_path = Path(args.script)
-    audio_path  = Path(args.audio)
+    audio_path = Path(args.audio)
     output_path = Path(args.output)
 
     # ── 1. VALIDATE ──────────────────────────────────────────────────────────
     print("[ToonToon] Validating inputs...")
     logger.info("Validating input file paths...")
-    
+
     for p, label in [(script_path, "Script"), (audio_path, "Audio")]:
         if not p.exists():
             err_msg = f"{label} file not found at expected path: {p.resolve()}"
@@ -112,30 +142,39 @@ def main():
             sys.exit(1)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Input validation successful. Target output directory: {output_path.parent.resolve()}")
+    logger.info(
+        f"Input validation successful. Target output directory: {output_path.parent.resolve()}"
+    )
 
     # ── 2. PARSE SCRIPT ───────────────────────────────────────────────────────
     print("[ToonToon] Parsing annotated script...")
     logger.info(f"Reading target script: {script_path.name}")
     try:
         script_parser = ScriptParser()
-        script_text   = script_path.read_text(encoding="utf-8")
-        
+        script_text = script_path.read_text(encoding="utf-8")
+
         logger.debug("Executing ScriptParser rules on raw input string...")
-        metadata      = script_parser.parse(script_text)
-        clean_script  = metadata.clean_text
-        
+        metadata = script_parser.parse(script_text)
+        clean_script = metadata.clean_text
+
         print(f"[ToonToon] Clean transcript: {len(clean_script)} chars")
-        logger.info(f"Script parsing successful. Extracted clean transcript length: {len(clean_script)} characters.")
+        logger.info(
+            f"Script parsing successful. Extracted clean transcript length: {len(clean_script)} characters."
+        )
 
         # --- LOGGING DUMP (Single-Line JSON for structural inspection) ---
         log_data = {
             "clean_text": metadata.clean_text,
-            "emotion_events": [{"emotion": e.emotion_code, "pos": e.position} for e in metadata.emotion_events],
+            "emotion_events": [
+                {"emotion": e.emotion_code, "pos": e.position}
+                for e in metadata.emotion_events
+            ],
             "line_breaks": metadata.line_breaks,
-            "paragraph_breaks": metadata.paragraph_breaks
+            "paragraph_breaks": metadata.paragraph_breaks,
         }
-        logger.debug(f"Parsed Script Metadata Metrics: {json.dumps(log_data,indent=4)}")
+        logger.debug(
+            f"Parsed Script Metadata Metrics: {json.dumps(log_data, indent=4)}"
+        )
         logger.info(
             f"Emotion markers found: "
             f"{[(e.emotion_code, e.position) for e in metadata.emotion_events]}"
@@ -148,31 +187,43 @@ def main():
         sys.exit(1)
 
     # ── 3. ALIGN AUDIO ────────────────────────────────────────────────────────
-    print("[ToonToon] Aligning audio with Gentle API...")
-    logger.info("Contacting Gentle forced-aligner endpoint...")
+    print(f"[ToonToon] Aligning audio with {args.aligner}...")
+    logger.info(f"Running forced aligner: {args.aligner}")
     try:
-        aligner       = GentleAligner()
+        aligner = (
+            MFAAligner(mfa_bin=args.mfa_bin)
+            if args.aligner == "mfa"
+            else GentleAligner()
+        )
         aligned_words = aligner.align(str(audio_path), transcript=clean_script)
-        
+
         if not aligned_words:
-            err_msg = "Gentle alignment engine execution succeeded but returned 0 aligned tokens."
+            err_msg = (
+                f"{args.aligner} alignment succeeded but returned 0 aligned tokens."
+            )
             print(f"[ERROR] {err_msg}")
             logger.error(err_msg)
             sys.exit(1)
         # Logs each item on a new line with an indented bullet
-        formatted_list = '\n - '.join(map(str, aligned_words))
+        formatted_list = "\n - ".join(map(str, aligned_words))
         logger.debug(f"Gentle aligned format: {formatted_list}")
         total_duration = max(w.end_time for w in aligned_words)
         print(f"[ToonToon] Aligned {len(aligned_words)} words (~{total_duration:.1f}s)")
-        logger.info(f"Alignment completed: {len(aligned_words)} tokens mapped. Estimated video duration: {total_duration:.2f} seconds.")
-        
+        logger.info(
+            f"Alignment completed: {len(aligned_words)} tokens mapped. Estimated video duration: {total_duration:.2f} seconds."
+        )
+
     except ConnectionError as e:
         print(f"[ERROR] {e}")
-        logger.exception("Network connection failure trying to communicate with local/remote Gentle service.")
+        logger.exception(
+            "Network connection failure trying to communicate with local/remote Gentle service."
+        )
         sys.exit(1)
     except Exception as e:
         print(f"[ERROR] Alignment failed: {e}")
-        logger.exception("Unexpected error occurred while running phonetic timeline synchronization.")
+        logger.exception(
+            "Unexpected error occurred while running phonetic timeline synchronization."
+        )
         sys.exit(1)
 
     # ── 3.5. GENERATE SUBTITLES ───────────────────────────────────────────────
@@ -191,7 +242,9 @@ def main():
             logger.info(f"Subtitle file ready: {subtitles_path.resolve()}")
         except Exception as e:
             print(f"[WARN] Subtitle generation failed (non-fatal): {e}")
-            logger.warning(f"Subtitle generation skipped due to error: {e}", exc_info=True)
+            logger.warning(
+                f"Subtitle generation skipped due to error: {e}", exc_info=True
+            )
             subtitles_path = None
     else:
         print("[ToonToon] Subtitles disabled (--subtitles false)")
@@ -201,7 +254,7 @@ def main():
     print("[ToonToon] Scheduling animation frames...")
     logger.info("Evaluating frame scheduler mapping targets across track timelines...")
     try:
-        scheduler                 = AnimationScheduler()
+        scheduler = AnimationScheduler()
         # Add metadata as an explicit keyword argument here:
         phonemes, poses, emotions = scheduler.schedule_frames(
             aligned_words, total_duration, clean_script, parser_metadata=metadata
@@ -218,45 +271,56 @@ def main():
         unique_emotions = np.unique(emotions)
 
         logger.info(
-            f"Emotion IDs present in final schedule: "
-            f"{unique_emotions.tolist()}"
+            f"Emotion IDs present in final schedule: {unique_emotions.tolist()}"
         )
         total_frames = int(total_duration * FRAME_RATE)
         print(f"[ToonToon] Scheduled {total_frames} frames")
-        logger.info(f"Scheduling matrices built. Frame vectors lengths - Phonemes: {len(phonemes)}, Poses: {len(poses)}, Emotions: {len(emotions)} at target FPS: {FRAME_RATE}")
+        logger.info(
+            f"Scheduling matrices built. Frame vectors lengths - Phonemes: {len(phonemes)}, Poses: {len(poses)}, Emotions: {len(emotions)} at target FPS: {FRAME_RATE}"
+        )
 
         # Execute MouthBlender coarticulation processing if active
         blend_states = None
         if args.use_blender:
             print("[ToonToon] Activating MouthBlender coarticulation post-processor...")
-            logger.info("MouthBlender processor activated. Running phonetic lip sync transition optimization...")
+            logger.info(
+                "MouthBlender processor activated. Running phonetic lip sync transition optimization..."
+            )
             blender = MouthBlender()
             blend_states = blender.process(phonemes)
 
     except Exception as e:
         print(f"[ERROR] Scheduling failed: {e}")
-        logger.exception("Critical error state reached mapping animation states to chronological frames.")
+        logger.exception(
+            "Critical error state reached mapping animation states to chronological frames."
+        )
         sys.exit(1)
 
     # ── 5. INIT RENDERER ──────────────────────────────────────────────────────
     print("[ToonToon] Initializing renderer...")
     try:
         character_path = Path("assets") / "characters" / args.character
-        logger.info(f"Locating visual sprite directory at structural path: {character_path.resolve()}")
-        
+        logger.info(
+            f"Locating visual sprite directory at structural path: {character_path.resolve()}"
+        )
+
         if not character_path.exists():
             err_msg = f"Character assets layer directory cannot be found: {character_path.resolve()}"
             print(f"[ERROR] {err_msg}")
             logger.error(err_msg)
             sys.exit(1)
-            
+
         renderer = FrameRenderer(str(character_path))
         print(f"[ToonToon] Loaded character: {args.character}")
-        logger.info(f"FrameRenderer initialized successfully for identity template profile: '{args.character}'")
-        
+        logger.info(
+            f"FrameRenderer initialized successfully for identity template profile: '{args.character}'"
+        )
+
     except Exception as e:
         print(f"[ERROR] Renderer init failed: {e}")
-        logger.exception("Error mounting character template assets context inside internal canvas memory.")
+        logger.exception(
+            "Error mounting character template assets context inside internal canvas memory."
+        )
         sys.exit(1)
 
     # ── 6. INIT COMPOSITOR ────────────────────────────────────────────────────
@@ -272,39 +336,49 @@ def main():
         )
         _compositor.start()
 
-        sub_status = f"with subtitles ({subtitles_path.name})" if subtitles_path else "without subtitles"
-        logger.info(f"FFmpeg subprocess engine spawned {sub_status}; streaming channels active.")
-        
+        sub_status = (
+            f"with subtitles ({subtitles_path.name})"
+            if subtitles_path
+            else "without subtitles"
+        )
+        logger.info(
+            f"FFmpeg subprocess engine spawned {sub_status}; streaming channels active."
+        )
+
     except RuntimeError as e:
         print(f"[ERROR] {e}")
-        logger.exception("Subprocess execution system failure starting external composite compiler pipeline.")
+        logger.exception(
+            "Subprocess execution system failure starting external composite compiler pipeline."
+        )
         sys.exit(1)
 
     # ── 7. RENDER + STREAM ────────────────────────────────────────────────────
     print("[ToonToon] Rendering and streaming frames...")
-    logger.info(f"Looping frame generation pool for target runtime limit: {total_frames} loops.")
+    logger.info(
+        f"Looping frame generation pool for target runtime limit: {total_frames} loops."
+    )
 
-    background = None   # TODO: background video support
-    start_time   = time.time()
-    frame_times  = []   # rolling window for FPS smoothing
+    background = None  # TODO: background video support
+    start_time = time.time()
+    frame_times = []  # rolling window for FPS smoothing
 
     try:
         for frame_idx in range(total_frames):
             emotion_id = int(emotions[frame_idx]) if frame_idx < len(emotions) else 0
-            pose_id    = int(poses[frame_idx])    if frame_idx < len(poses)    else 0
-            mouth_id   = int(phonemes[frame_idx]) if frame_idx < len(phonemes) else 4
+            pose_id = int(poses[frame_idx]) if frame_idx < len(poses) else 0
+            mouth_id = int(phonemes[frame_idx]) if frame_idx < len(phonemes) else 4
 
             # Dynamic Blinking resolution from character manifest if present
-            blink_state = 0   # default open
+            blink_state = 0  # default open
             if renderer.manifest_data and "blinking" in renderer.manifest_data:
                 blinking_cfg = renderer.manifest_data["blinking"]
                 frame_modulus = blinking_cfg.get("frame_modulus", 60)
                 blink_cycle = frame_idx % frame_modulus
                 states_cfg = blinking_cfg.get("states", {})
-                
+
                 closed_cfg = states_cfg.get("closed", {})
                 half_cfg = states_cfg.get("half", {})
-                
+
                 if blink_cycle in closed_cfg.get("trigger_frames", [57, 58]):
                     blink_state = closed_cfg.get("id", 2)
                 elif blink_cycle in half_cfg.get("trigger_frames", [56, 59]):
@@ -314,22 +388,29 @@ def main():
             else:
                 blink_cycle = frame_idx % 60
                 if blink_cycle in (57, 58):
-                    blink_state = 2   # fully closed
+                    blink_state = 2  # fully closed
                 elif blink_cycle in (56, 59):
-                    blink_state = 1   # half closed
+                    blink_state = 1  # half closed
                 else:
-                    blink_state = 0   # open
-            
+                    blink_state = 0  # open
+
             # Periodically log matrix indexing details to file every 300 frames to avoid file bloating
             if frame_idx % 300 == 0:
-                logger.debug(f"Render progress check: Frame {frame_idx}/{total_frames} | State vector markers -> Emotion: {emotion_id}, Pose: {pose_id}, Mouth/Phoneme: {mouth_id}")
+                logger.debug(
+                    f"Render progress check: Frame {frame_idx}/{total_frames} | State vector markers -> Emotion: {emotion_id}, Pose: {pose_id}, Mouth/Phoneme: {mouth_id}"
+                )
 
             # Grab current frame's BlendState if available
             blend_state = blend_states[frame_idx] if blend_states is not None else None
 
             frame = renderer.render_frame(
-                background, emotion_id, pose_id, mouth_id, blink_state,
-                is_flipped=False, blend_state=blend_state,
+                background,
+                emotion_id,
+                pose_id,
+                mouth_id,
+                blink_state,
+                is_flipped=False,
+                blend_state=blend_state,
             )
             _compositor.write_frame(frame)
 
@@ -344,18 +425,18 @@ def main():
             else:
                 fps = 0.0
 
-            elapsed         = now - start_time
-            remaining       = (total_frames - frame_idx - 1) / fps if fps > 0 else 0
-            elapsed_str     = f"{int(elapsed)//60:02d}:{int(elapsed)%60:02d}"
-            eta_str         = f"{int(remaining)//60:02d}:{int(remaining)%60:02d}"
-            progress_pct    = (frame_idx + 1) / total_frames * 100
+            elapsed = now - start_time
+            remaining = (total_frames - frame_idx - 1) / fps if fps > 0 else 0
+            elapsed_str = f"{int(elapsed) // 60:02d}:{int(elapsed) % 60:02d}"
+            eta_str = f"{int(remaining) // 60:02d}:{int(remaining) % 60:02d}"
+            progress_pct = (frame_idx + 1) / total_frames * 100
 
             bar_filled = int(progress_pct / 5)
             bar = "█" * bar_filled + "░" * (20 - bar_filled)
 
             sys.stdout.write(
                 f"\r[{bar}] {progress_pct:5.1f}% | "
-                f"Frame {frame_idx+1}/{total_frames} | "
+                f"Frame {frame_idx + 1}/{total_frames} | "
                 f"{fps:5.1f} fps | "
                 f"⏱ {elapsed_str} | ETA {eta_str}  "
             )
@@ -363,38 +444,50 @@ def main():
 
         render_duration = time.time() - start_time
         print(f"\n[ToonToon] Render complete in {render_duration:.1f}s")
-        logger.info(f"Canvas multi-frame sequence stream generation process safely terminated. Render phase duration: {render_duration:.2f} seconds.")
+        logger.info(
+            f"Canvas multi-frame sequence stream generation process safely terminated. Render phase duration: {render_duration:.2f} seconds."
+        )
 
     except KeyboardInterrupt:
         print("\n[ToonToon] Interrupted during render.")
-        logger.warning("Pipeline interrupted by User Keyboard command sequence during raw assembly render execution loop.")
+        logger.warning(
+            "Pipeline interrupted by User Keyboard command sequence during raw assembly render execution loop."
+        )
         _compositor.terminate()
         sys.exit(1)
     except Exception as e:
         print(f"\n[ERROR] Render failed: {e}")
-        logger.exception("Critical unexpected canvas rendering loop exception encountered.")
+        logger.exception(
+            "Critical unexpected canvas rendering loop exception encountered."
+        )
         _compositor.terminate()
         sys.exit(1)
 
     # ── 8. FINALIZE ───────────────────────────────────────────────────────────
     print("[ToonToon] Finalizing video composition...")
-    logger.info("Invoking downstream asset mixing and rendering file wrap processing routines...")
+    logger.info(
+        "Invoking downstream asset mixing and rendering file wrap processing routines..."
+    )
     try:
         _compositor.finish()
         if output_path.exists():
             size_mb = output_path.stat().st_size / (1024 * 1024)
             success_msg = f"✓ Done! Saved: {output_path.resolve()} ({size_mb:.1f} MB)"
             print(f"[ToonToon] {success_msg}")
-            logger.info(f"Target process completion successful. Container artifact properties: {success_msg}")
+            logger.info(
+                f"Target process completion successful. Container artifact properties: {success_msg}"
+            )
         else:
             err_msg = f"FFmpeg compilation loop concluded but target output binary file cannot be verified on disk: {output_path.resolve()}"
             print(f"[ERROR] {err_msg}")
             logger.error(err_msg)
             sys.exit(1)
-            
+
     except RuntimeError as e:
         print(f"[ERROR] {e}")
-        logger.exception("Downstream multiplexing encoding block crash detected during file wrapper finalization.")
+        logger.exception(
+            "Downstream multiplexing encoding block crash detected during file wrapper finalization."
+        )
         sys.exit(1)
 
 
@@ -403,4 +496,6 @@ if __name__ == "__main__":
     logger.info("--- ToonToon Orchestrator Process Fired up ---")
     main()
     execution_total = time.time() - start
-    logger.info(f"--- ToonToon Script Closed down. Lifetime Run duration: {execution_total:.4f}s ---")
+    logger.info(
+        f"--- ToonToon Script Closed down. Lifetime Run duration: {execution_total:.4f}s ---"
+    )
