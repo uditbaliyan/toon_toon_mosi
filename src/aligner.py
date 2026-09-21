@@ -48,6 +48,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from typing import List
 
@@ -179,6 +180,36 @@ _MFA_SILENCE_LABELS = {"", "sil", "sp", "spn", "silence"}
 
 # Strips trailing ARPABET stress digits: "AH0" -> "AH", "IH1" -> "IH".
 _STRESS_DIGIT_RE = re.compile(r"\d+$")
+
+# MFA labels out-of-dictionary words "<unk>" (phones: "spn").
+_OOV_LABEL = "<unk>"
+_EDGE_PUNCT = ".,!?;:\"'()-"  # same strip set scheduler.py uses when matching words
+
+
+def _restore_oov(words: List[AlignedWord], transcript: str) -> List[AlignedWord]:
+    """
+    Swap the transcript's own token back in for "<unk>" words so subtitles
+    don't burn "<UNK>" and scheduler.py's word -> char-position matching
+    (which searches clean_script for word.word) still finds them.
+    Sequential walk over transcript tokens; small lookahead resyncs if MFA
+    tokenised something differently.
+    """
+    if not any(w.word == _OOV_LABEL for w in words):
+        return words
+    toks = [t for t in (x.strip(_EDGE_PUNCT) for x in transcript.split()) if t]
+    lower = [t.lower() for t in toks]
+    ptr, out = 0, []
+    for w in words:
+        if w.word == _OOV_LABEL:
+            out.append(replace(w, word=toks[ptr]) if ptr < len(toks) else w)
+            ptr += 1
+        else:
+            try:
+                ptr = lower.index(w.word.lower(), ptr, ptr + 4) + 1
+            except ValueError:
+                ptr += 1
+            out.append(w)
+    return out
 
 
 class MFAAligner:
@@ -330,7 +361,9 @@ class MFAAligner:
             word_entries = tg.getTier("words").entries
             phone_entries_raw = tg.getTier("phones").entries
 
-        return self._build_words(word_entries, phone_entries_raw)
+        return _restore_oov(
+            self._build_words(word_entries, phone_entries_raw), transcript
+        )
 
     def _build_words(self, word_entries, phone_entries_raw) -> List[AlignedWord]:
         """Convert praatio's (start, end, label) tier entries into AlignedWords."""
