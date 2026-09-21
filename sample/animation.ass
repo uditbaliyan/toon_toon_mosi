@@ -1,0 +1,84 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1280
+PlayResY: 720
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,52,&H0000FFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,2,60,60,50,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+
+Dialogue: 0,0:00:00.10,0:00:01.32,Default,,0,0,0,,SO I UP LOADED A
+Dialogue: 0,0:00:01.32,0:00:03.35,Default,,0,0,0,,VIDEO SHOW CASING MY POLISHED
+Dialogue: 0,0:00:03.35,0:00:05.27,Default,,0,0,0,,PLANETS CAUSE I ALSO ADDED
+Dialogue: 0,0:00:05.33,0:00:06.83,Default,,0,0,0,,FIVE OTHER PLANETS IN TWENTY
+Dialogue: 0,0:00:06.83,0:00:08.20,Default,,0,0,0,,TWELVE AND ALTHOUGH IT WENT
+Dialogue: 0,0:00:08.23,0:00:09.45,Default,,0,0,0,,UNDER THE RADAR FOR QUITE
+Dialogue: 0,0:00:09.45,0:00:11.43,Default,,0,0,0,,A FEW YEARS YEAH EVENTUALLY
+Dialogue: 0,0:00:11.43,0:00:12.37,Default,,0,0,0,,IT BECAME MY MOST VIEWED
+Dialogue: 0,0:00:12.37,0:00:13.79,Default,,0,0,0,,VIDEO BUT WHY AM I
+Dialogue: 0,0:00:13.79,0:00:15.43,Default,,0,0,0,,RETURNING TO THIS TOPIC EIGHT
+Dialogue: 0,0:00:15.43,0:00:17.85,Default,,0,0,0,,YEARS LATER WELL BACK THEN
+Dialogue: 0,0:00:17.91,0:00:19.56,Default,,0,0,0,,I DIDN'T REALLY WANT OR
+Dialogue: 0,0:00:19.56,0:00:20.95,Default,,0,0,0,,KNOW HOW TO SHARE MY
+Dialogue: 0,0:00:20.95,0:00:22.85,Default,,0,0,0,,WORLD FILES ONLINE SO I
+Dialogue: 0,0:00:22.86,0:00:24.28,Default,,0,0,0,,THOUGHT THE VIDEO ALONE WAS
+Dialogue: 0,0:00:24.28,0:00:25.95,Default,,0,0,0,,ENOUGH NOW WITH A NEW
+Dialogue: 0,0:00:25.95,0:00:27.22,Default,,0,0,0,,PERSPECTIVE AND WANTING TO BE
+Dialogue: 0,0:00:27.22,0:00:28.75,Default,,0,0,0,,MORE COLLABORATIVE IN THE YOU
+Dialogue: 0,0:00:28.75,0:00:30.34,Default,,0,0,0,,TUBE ONLINE WORLD I'M COMING
+Dialogue: 0,0:00:30.34,0:00:31.21,Default,,0,0,0,,TO THE REALIZATION THAT IT
+Dialogue: 0,0:00:31.21,0:00:32.35,Default,,0,0,0,,WOULD BE REALLY COOL TO
+Dialogue: 0,0:00:32.35,0:00:34.07,Default,,0,0,0,,SEE OTHER MINE CRAFT PLAYERS
+Dialogue: 0,0:00:34.13,0:00:35.68,Default,,0,0,0,,PLAYING AROUND WITH MY GIANT
+Dialogue: 0,0:00:35.72,0:00:37.13,Default,,0,0,0,,EARTH IN THEIR OWN CREATIVE
+Dialogue: 0,0:00:37.13,0:00:39.28,Default,,0,0,0,,WAYS SO I'LL PUT LINKS
+Dialogue: 0,0:00:39.29,0:00:40.65,Default,,0,0,0,,TO DOWNLOAD ALL THE WORLD
+Dialogue: 0,0:00:40.65,0:00:42.20,Default,,0,0,0,,FILES IN THE DESCRIPTION SO
+Dialogue: 0,0:00:42.20,0:00:43.26,Default,,0,0,0,,YOU GUYS CAN PLAY WITH
+Dialogue: 0,0:00:43.26,0:00:45.02,Default,,0,0,0,,IT REMEMBER IT'S GOT FOUR
+Dialogue: 0,0:00:45.02,0:00:46.64,Default,,0,0,0,,TIMES THE BLOCKS SIX TIMES
+Dialogue: 0,0:00:46.64,0:00:47.95,Default,,0,0,0,,THE PLANETS AND A HUNDRED
+Dialogue: 0,0:00:47.95,0:00:49.24,Default,,0,0,0,,TIMES THE CARING ES THAN
+Dialogue: 0,0:00:49.24,0:00:51.38,Default,,0,0,0,,THAT OTHER WORLD AND UH
+Dialogue: 0,0:00:51.53,0:00:52.82,Default,,0,0,0,,I I KNOW THAT PEP
+Dialogue: 0,0:00:52.82,0:00:54.09,Default,,0,0,0,,IN F T ASSES ONE
+Dialogue: 0,0:00:54.09,0:00:55.44,Default,,0,0,0,,TO ONE EARTH REPLICA WILL
+Dialogue: 0,0:00:55.44,0:00:55.75,Default,,0,0,0,,BLOW
+Dialogue: 0,0:00:56.35,0:00:57.65,Default,,0,0,0,,THE WATER WHEN IT'S DONE
+Dialogue: 0,0:00:58.18,0:00:59.28,Default,,0,0,0,,BUT THEY'RE NOT QUITE DONE
+Dialogue: 0,0:00:59.28,0:01:00.51,Default,,0,0,0,,YET I'LL ALSO PUT THE
+Dialogue: 0,0:01:00.51,0:01:01.87,Default,,0,0,0,,YO SAM ITTY AND MEN
+Dialogue: 0,0:01:01.87,0:01:03.69,Default,,0,0,0,,JUROR SPONGE WORLD FILES ONLINE
+Dialogue: 0,0:01:03.74,0:01:04.46,Default,,0,0,0,,BUT NOT THE POCK WILL
+Dialogue: 0,0:01:04.46,0:01:05.70,Default,,0,0,0,,BELLS CANNON IN MINE CRAFT
+Dialogue: 0,0:01:05.76,0:01:07.45,Default,,0,0,0,,OR SLOPE DESERT WORLDS SINCE
+Dialogue: 0,0:01:07.47,0:01:08.74,Default,,0,0,0,,THOSE RELY ON MOD THAT
+Dialogue: 0,0:01:08.74,0:01:10.11,Default,,0,0,0,,ARE DEFUNCT NOW I ALSO
+Dialogue: 0,0:01:10.11,0:01:11.44,Default,,0,0,0,,WANT TO SAY THANKS TO
+Dialogue: 0,0:01:11.44,0:01:12.76,Default,,0,0,0,,MOE HANG AND NOTCH FOR
+Dialogue: 0,0:01:12.76,0:01:14.85,Default,,0,0,0,,MAKING WORLD FILES BACKWARD COMPATIBLE
+Dialogue: 0,0:01:14.92,0:01:16.06,Default,,0,0,0,,BECAUSE I WAS WORRIED FOR
+Dialogue: 0,0:01:16.06,0:01:17.37,Default,,0,0,0,,THE LONGEST TIME THAT MY
+Dialogue: 0,0:01:17.37,0:01:18.71,Default,,0,0,0,,WORLD FILES FROM MINE CRAFT
+Dialogue: 0,0:01:18.71,0:01:20.12,Default,,0,0,0,,ONE POINT TWO WOULD BE
+Dialogue: 0,0:01:20.12,0:01:21.83,Default,,0,0,0,,SUPER DIFFICULT TO CONVERT INTO
+Dialogue: 0,0:01:21.83,0:01:23.11,Default,,0,0,0,,THE MODERN MINE CRAFT ONE
+Dialogue: 0,0:01:23.11,0:01:24.78,Default,,0,0,0,,POINT SIXTEEN BUT IN TRUTH
+Dialogue: 0,0:01:24.80,0:01:26.26,Default,,0,0,0,,IT COULDN'T HAVE BEEN EASIER
+Dialogue: 0,0:01:26.43,0:01:27.54,Default,,0,0,0,,BACK THE TOPIC OF THE
+Dialogue: 0,0:01:27.54,0:01:29.10,Default,,0,0,0,,PLANETS WORLD IN THE LAST
+Dialogue: 0,0:01:29.10,0:01:31.01,Default,,0,0,0,,WEEK I'VE ALSO MANUALLY ADDED
+Dialogue: 0,0:01:31.03,0:01:33.12,Default,,0,0,0,,MAYBE FIFTEEN TO TWENTY NEW
+Dialogue: 0,0:01:33.14,0:01:34.86,Default,,0,0,0,,OBJECTS TO THE SIZE COMPARISON
+Dialogue: 0,0:01:34.87,0:01:36.45,Default,,0,0,0,,ARENA SINCE I AM THE
+Dialogue: 0,0:01:36.48,0:01:37.45,Default,,0,0,0,,SCALE OF THE UNIVERSE GUY
+Dialogue: 0,0:01:37.46,0:01:38.78,Default,,0,0,0,,I GUESS SO I THOUGHT
+Dialogue: 0,0:01:38.78,0:01:39.58,Default,,0,0,0,,IT MIGHT BE FUN TO
+Dialogue: 0,0:01:39.58,0:01:41.05,Default,,0,0,0,,USE THIS VIDEO TO SHOW
+Dialogue: 0,0:01:41.05,0:01:42.14,Default,,0,0,0,,THEM OFF TO YOU SO
+Dialogue: 0,0:01:42.14,0:01:42.96,Default,,0,0,0,,LET'S JUMP BACK IN TO
+Dialogue: 0,0:01:42.96,0:01:43.57,Default,,0,0,0,,MINE CRAFT
