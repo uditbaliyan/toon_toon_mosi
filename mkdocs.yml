@@ -1,0 +1,47 @@
+site_name: ToonToon Engine Docs
+site_description: High-Performance Unified Animation Pipeline Documentation
+repo_url: https://github.com/yourusername/toonton
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: light
+      primary: blue
+      accent: indigo
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+
+
+markdown_extensions:
+  - pymdownx.highlight:
+      use_pygments: true
+  - pymdownx.superfences
+  - pymdownx.arithmatex:
+      generic: true
+  - tables
+  - toc:
+      toc_depth: 2
+
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+nav:
+  - Home: index.md
+  - Architecture & Design: architecture.md
+  - API Reference: reference.md
+  - Character Onboarding: guides.md
+  - Configuration: config.md
