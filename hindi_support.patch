@@ -1,0 +1,496 @@
+diff --git a/main.py b/main.py
+index 79c3a83..319cde9 100644
+--- a/main.py
++++ b/main.py
+@@ -17,6 +17,7 @@ from src.compositor import FFmpegCompositor
+ from src.config import (
+     BACKGROUND_MUSIC_VOLUME,
+     FRAME_RATE,
++    LANGUAGE_PRESETS,
+ )
+ from src.parser import ScriptParser
+ from src.renderer import FrameRenderer
+@@ -102,6 +103,12 @@ def main():
+         choices=["true", "false"],
+         help="Burn JarToon-style subtitles into the output video",
+     )
++    parser.add_argument(
++        "--lang",
++        default="en",
++        choices=sorted(LANGUAGE_PRESETS),
++        help="Narration language (mfa backend: picks dictionary/acoustic model; also subtitle font)",
++    )
+     parser.add_argument(
+         "--aligner",
+         default="mfa",
+@@ -191,7 +198,7 @@ def main():
+     logger.info(f"Running forced aligner: {args.aligner}")
+     try:
+         aligner = (
+-            MFAAligner(mfa_bin=args.mfa_bin)
++            MFAAligner(mfa_bin=args.mfa_bin, lang=args.lang)
+             if args.aligner == "mfa"
+             else GentleAligner()
+         )
+@@ -237,7 +244,13 @@ def main():
+         try:
+             # Place the .ass file alongside the output video
+             subtitles_path = output_path.with_suffix(".ass")
+-            generate_ass(aligned_words, subtitles_path)
++            preset = LANGUAGE_PRESETS[args.lang]
++            generate_ass(
++                aligned_words,
++                subtitles_path,
++                font=preset["subtitle_font"],
++                upper=preset["subtitle_upper"],
++            )
+             print(f"[ToonToon] Subtitles written → {subtitles_path.name}")
+             logger.info(f"Subtitle file ready: {subtitles_path.resolve()}")
+         except Exception as e:
+diff --git a/requirements.txt b/requirements.txt
+index 954bf73..0215174 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -2,3 +2,5 @@ numpy>=1.21.0
+ opencv-python>=4.5.0
+ requests>=2.26.0
+ Pillow>=8.3.0
++epitran>=1.24  # only needed for --lang hi
++praatio
+diff --git a/src/aligner.py b/src/aligner.py
+index e84119b..3aa2851 100644
+--- a/src/aligner.py
++++ b/src/aligner.py
+@@ -48,12 +48,14 @@ import re
+ import shutil
+ import subprocess
+ import tempfile
++import unicodedata
+ from dataclasses import replace
+ from pathlib import Path
+ from typing import List
+ 
+ import requests
+ 
++from .config import LANGUAGE_PRESETS
+ from .models import AlignedWord, PhonemeInterval
+ 
+ 
+@@ -183,7 +185,7 @@ _STRESS_DIGIT_RE = re.compile(r"\d+$")
+ 
+ # MFA labels out-of-dictionary words "<unk>" (phones: "spn").
+ _OOV_LABEL = "<unk>"
+-_EDGE_PUNCT = ".,!?;:\"'()-"  # same strip set scheduler.py uses when matching words
++_EDGE_PUNCT = ".,!?;:\"'()-।॥"  # same strip set scheduler.py uses when matching words
+ 
+ 
+ def _restore_oov(words: List[AlignedWord], transcript: str) -> List[AlignedWord]:
+@@ -231,6 +233,7 @@ class MFAAligner:
+         num_jobs: int = 2,
+         clean: bool = True,
+         timeout: int = 1800,
++        lang: str = "en",
+     ):
+         """
+         Args:
+@@ -254,7 +257,17 @@ class MFAAligner:
+                 call's cached DB, whose audio paths point at a deleted tempdir
+                 (soundfile "System error" in analyze_alignments).
+             timeout: Max seconds to wait for a single align() call.
++            lang: "en" or "hi". When dictionary/acoustic_model are left at
++                their English defaults, the preset for `lang` supplies them.
++                "hi" also cleans the transcript (danda etc.) and adds Epitran
++                pronunciations for words missing from hindi_cv.
+         """
++        preset = LANGUAGE_PRESETS[lang]
++        if dictionary == "english_us_arpa":
++            dictionary = preset["dictionary"]
++        if acoustic_model == "english_us_arpa":
++            acoustic_model = preset["acoustic_model"]
++        self.lang = lang
+         self.mfa_bin = mfa_bin
+         self.mfa_bin_dir = str(Path(mfa_bin).parent)
+         self.dictionary = dictionary
+@@ -311,13 +324,25 @@ class MFAAligner:
+ 
+             stem = audio_path.stem
+             shutil.copy(audio_path, corpus_dir / f"{stem}{audio_path.suffix}")
+-            (corpus_dir / f"{stem}.txt").write_text(transcript, encoding="utf-8")
++            mfa_text = transcript
++            dictionary = self.dictionary
++            if self.lang == "hi":
++                from . import hindi
++
++                mfa_text = hindi.prepare_transcript(transcript)
++                base = hindi.find_dictionary(self.dictionary, self.mfa_bin)
++                extended = hindi.build_oov_dictionary(
++                    transcript, base, tmp / "hindi_extended.dict"
++                )
++                if extended is not None:
++                    dictionary = str(extended)
++            (corpus_dir / f"{stem}.txt").write_text(mfa_text, encoding="utf-8")
+ 
+             cmd = [
+                 self.mfa_bin,
+                 "align",
+                 str(corpus_dir),
+-                self.dictionary,
++                dictionary,
+                 self.acoustic_model,
+                 str(output_dir),
+                 "--single_speaker",
+@@ -397,7 +422,7 @@ class MFAAligner:
+ 
+     @staticmethod
+     def _normalize_phone(label: str) -> str:
+-        label = label.strip().lower()
++        label = unicodedata.normalize("NFC", label.strip().lower())
+         if label in _MFA_SILENCE_LABELS:
+             return "sil"
+         return _STRESS_DIGIT_RE.sub("", label) or "sil"
+diff --git a/src/config.py b/src/config.py
+index 6da35bf..db02feb 100644
+--- a/src/config.py
++++ b/src/config.py
+@@ -201,4 +201,93 @@ PRINT_PROGRESS_EVERY  = 10
+ # AUDIO CONFIGURATION
+ # ============================================================================
+ 
+-BACKGROUND_MUSIC_VOLUME = 0.044
+\ No newline at end of file
++BACKGROUND_MUSIC_VOLUME = 0.044
++
++# ============================================================================
++# LANGUAGE SUPPORT
++# ============================================================================
++# Per-language MFA models + subtitle styling. Add a language = add a preset
++# here + (if its phone set isn't ARPABET) an IPA map below.
++#
++#   en : english_us_arpa dict + acoustic (ARPABET, PHONEME_MAP above)
++#   hi : hindi_cv dict + acoustic (Epitran IPA phone set, HINDI_PHONEME_MAP)
++#        Setup: mfa model download dictionary hindi_cv
++#               mfa model download acoustic  hindi_cv
++#               pip install epitran
++LANGUAGE_PRESETS = {
++    "en": {
++        "dictionary": "english_us_arpa",
++        "acoustic_model": "english_us_arpa",
++        "subtitle_font": "Arial",
++        "subtitle_upper": True,
++    },
++    "hi": {
++        "dictionary": "hindi_cv",
++        "acoustic_model": "hindi_cv",
++        # Needs a Devanagari font on the render box:
++        #   apt-get install -y fonts-noto-core   (Kaggle/Debian)
++        "subtitle_font": "Noto Sans Devanagari",
++        "subtitle_upper": False,
++    },
++}
++
++# Full hindi_cv phone inventory (Epitran) -> abstract mouth shape.
++# Mirrors the ARPABET choices in PHONEME_MAP so both languages animate alike:
++#   aa/ah/eh/ae/ao -> a | iy/ey -> ay | ow -> au | uw/uh/er/r/w -> u
++#   labials -> m | f/v -> f | coronal/velar/sibilant -> t | hh/l/y -> y
++HINDI_PHONEME_MAP = {
++    # open / central / open-mid vowels -> "a" arc
++    "a": "a", "aː": "a", "ɑ": "a", "ə": "a", "æ": "a", "æː": "a",
++    "ɛ": "a", "ʌ": "a", "ɔ": "a", "ɔː": "a", "ɪ": "a", "i": "a",
++    "ã": "a", "ãː": "a", "ə̃": "a",
++    # glides that narrow at the end -> "ay"
++    "iː": "ay", "e": "ay", "ẽ": "ay",
++    # o -> a-arc + u-arc
++    "o": "au",
++    # rounded -> "u"
++    "u": "u", "uː": "u", "ʊ": "u", "ũ": "u", "ũː": "u",
++    "r̩": "u", "ɹ̩": "u", "r": "u", "ɹ": "u", "ɽ": "u", "ɽ̥": "u", "w": "u",
++    # labials -> closed
++    "p": "m", "pʰ": "m", "b": "m", "b̤": "m", "m": "m",
++    # labiodental
++    "f": "f", "v": "f",
++    # coronal / dental / velar / palatal / sibilant / affricate -> teeth
++    "t": "t", "tʰ": "t", "d": "t", "d̤": "t",
++    "ʈ": "t", "ʈʰ": "t", "ɖ": "t", "ɖ̤": "t",
++    "k": "t", "kʰ": "t", "ɡ": "t", "ɡ̤": "t", "q": "t", "x": "t", "ɣ": "t",
++    "t͡ʃ": "t", "t͡ʃʰ": "t", "d͡ʒ": "t", "d͡ʒ̤": "t",
++    "n": "t", "ɳ": "t", "ɲ": "t", "ŋ": "t",
++    "s": "t", "z": "t", "ʃ": "t", "ʂ": "t", "θ": "t",
++    # glottal / lateral / palatal approximant -> narrow
++    "h": "y", "ɦ": "y", "l": "y", "j": "y",
++}
++
++# Phones the hindi_cv acoustic model knows. Used to filter Epitran G2P output
++# so generated pronunciations never introduce a phone the model lacks.
++HINDI_CV_PHONES = frozenset(HINDI_PHONEME_MAP)
++
++import unicodedata as _ud
++
++_IPA_MARKS_TO_STRIP = {"\u0361", "\u035c", "\u0324", "\u0325", "\u0329", "\u0303", "\u02b0", "\u02d0"}
++_PHONE_LOOKUP = {
++    _ud.normalize("NFC", k): v
++    for k, v in {**PHONEME_MAP, **HINDI_PHONEME_MAP}.items()
++}
++_WARNED_PHONES: set = set()
++
++
++def resolve_shape(phone: str):
++    """
++    Phone label -> abstract mouth shape. Handles ARPABET (en) and IPA (hi).
++    Order: exact (NFC) -> strip tie-bar/aspiration/length/nasal marks -> None.
++    Returns None for unknown phones so callers can warn instead of silently
++    closing the mouth.
++    """
++    p = _ud.normalize("NFC", phone.strip())
++    if p in _PHONE_LOOKUP:
++        return _PHONE_LOOKUP[p]
++    base = "".join(
++        c for c in _ud.normalize("NFD", p) if c not in _IPA_MARKS_TO_STRIP
++    )
++    base = _ud.normalize("NFC", base)
++    return _PHONE_LOOKUP.get(base)
+diff --git a/src/hindi.py b/src/hindi.py
+new file mode 100644
+index 0000000..13b88a1
+--- /dev/null
++++ b/src/hindi.py
+@@ -0,0 +1,120 @@
++"""
++Hindi helpers for the MFA aligner.
++
++1. prepare_transcript(): NFC-normalise + strip danda/punctuation so MFA's
++   tokenizer sees bare Devanagari words (hindi_cv's dict has entries with
++   punctuation glued on, so don't rely on MFA stripping it).
++2. build_oov_dictionary(): hindi_cv covers ~11k words. Anything else becomes
++   <unk>/spn -> closed mouth for that whole word. We G2P the missing Devanagari
++   words with Epitran (same phone set hindi_cv was built from), filter to
++   phones the acoustic model knows, and write base+extra to a temp dict.
++
++Needs: pip install epitran   (only for OOV generation)
++"""
++
++from __future__ import annotations
++
++import logging
++import os
++import re
++import unicodedata
++from pathlib import Path
++from typing import Iterable, List, Optional, Set, Tuple
++
++from .config import HINDI_CV_PHONES
++
++logger = logging.getLogger("ToonToon.Hindi")
++
++_PUNCT_RE = re.compile(r"[।॥.,!?;:\"'“”‘’()\[\]{}\-–—…]")
++_DEVANAGARI_RE = re.compile(r"[\u0900-\u097F]")
++
++
++def prepare_transcript(text: str) -> str:
++    """NFC + replace danda/punctuation with spaces + collapse whitespace
++    (newlines kept; they only matter for scheduler line-break logic, which
++    runs on the original clean_script, not this)."""
++    text = unicodedata.normalize("NFC", text)
++    text = _PUNCT_RE.sub(" ", text)
++    return re.sub(r"[ \t]+", " ", text).strip()
++
++
++def _tokens(text: str) -> List[str]:
++    return [t for t in text.split() if t]
++
++
++def find_dictionary(name: str, mfa_bin: str) -> Path:
++    """Locate a downloaded pretrained dictionary file."""
++    roots = []
++    if os.environ.get("MFA_ROOT_DIR"):
++        roots.append(Path(os.environ["MFA_ROOT_DIR"]))
++    roots += [Path.home() / "Documents" / "MFA", Path.home() / ".local" / "share" / "mfa"]
++    for root in roots:
++        d = root / "pretrained_models" / "dictionary"
++        for cand in (d / f"{name}.dict", d / f"{name}.txt"):
++            if cand.exists():
++                return cand
++        if d.exists():
++            hits = sorted(d.glob(f"{name}*"))
++            if hits:
++                return hits[0]
++    raise FileNotFoundError(
++        f"Dictionary '{name}' not found under MFA root. Run "
++        f"`{mfa_bin} model download dictionary {name}` first "
++        "(or set $MFA_ROOT_DIR)."
++    )
++
++
++def _load_vocab(dict_path: Path) -> Set[str]:
++    vocab: Set[str] = set()
++    with open(dict_path, encoding="utf-8") as f:
++        for line in f:
++            w = line.split("\t", 1)[0].split(" ", 1)[0].strip()
++            if w:
++                vocab.add(unicodedata.normalize("NFC", w))
++    return vocab
++
++
++def _g2p(words: Iterable[str]) -> List[Tuple[str, List[str]]]:
++    try:
++        import epitran
++    except ImportError as e:
++        raise ImportError("pip install epitran (needed for Hindi OOV words)") from e
++    epi = epitran.Epitran("hin-Deva")
++    out = []
++    for w in words:
++        phones = [unicodedata.normalize("NFC", p) for p in epi.trans_list(w)]
++        kept = [p for p in phones if p in HINDI_CV_PHONES]
++        dropped = [p for p in phones if p not in HINDI_CV_PHONES]
++        if dropped:
++            logger.debug("G2P %r dropped phones not in acoustic model: %s", w, dropped)
++        if kept:
++            out.append((w, kept))
++    return out
++
++
++def build_oov_dictionary(
++    transcript: str, base_dict: Path, out_path: Path
++) -> Optional[Path]:
++    """
++    Write base_dict + Epitran pronunciations for transcript words missing from
++    it. Returns out_path, or None if nothing was missing (use base_dict as is).
++    Latin-script OOV words are left alone (they stay <unk>).
++    """
++    vocab = _load_vocab(base_dict)
++    missing = sorted(
++        {
++            t
++            for t in _tokens(prepare_transcript(transcript))
++            if t not in vocab and _DEVANAGARI_RE.search(t)
++        }
++    )
++    if not missing:
++        return None
++    entries = _g2p(missing)
++    logger.info("Hindi OOV: %d missing, %d given Epitran pronunciations", len(missing), len(entries))
++    base = base_dict.read_text(encoding="utf-8")
++    if not base.endswith("\n"):
++        base += "\n"
++    extra = "".join(f"{w}\t{' '.join(ph)}\n" for w, ph in entries)
++    out_path.write_text(base + extra, encoding="utf-8")
++    return out_path
+diff --git a/src/scheduler.py b/src/scheduler.py
+index 34feed5..28de5c6 100644
+--- a/src/scheduler.py
++++ b/src/scheduler.py
+@@ -70,6 +70,8 @@ from .config import (
+     FRAME_RATE,
+     POSE_COUNT,
+     PHONEME_MAP,
++    resolve_shape,
++    _WARNED_PHONES,
+     MOUTH_SHAPE_CODES,
+     POSE_CHANGE_MIN_SECONDS,
+     POSE_CHANGE_MAX_SECONDS,
+@@ -139,7 +141,7 @@ def _build_char_frame_map(aligned_words, clean_script, frame_count):
+         j = i
+         while j < n_chars and not clean_script[j].isspace():
+             j += 1
+-        token = clean_script[i:j].lower().strip(".,!?;:\"'()-")
++        token = clean_script[i:j].lower().strip(".,!?;:\"'()-।॥")
+         if token:
+             script_tokens.append((i, j, token))
+         i = j
+@@ -152,7 +154,7 @@ def _build_char_frame_map(aligned_words, clean_script, frame_count):
+             gidx = gentle_idx + lookahead
+             if gidx >= len(word_timing):
+                 break
+-            gentle_token = word_timing[gidx][0].strip(".,!?;:\"'()-")
++            gentle_token = word_timing[gidx][0].strip(".,!?;:\"'()-।॥")
+             if gentle_token == token:
+                 start_t, end_t = word_timing[gidx][1], word_timing[gidx][2]
+                 gentle_idx = gidx + 1
+@@ -403,7 +405,7 @@ class AnimationScheduler:
+             for word in aligned_words:
+                 if word.start_time is None:
+                     continue
+-                wl = word.word.lower().strip(".,!?;:\"'()-")
++                wl = word.word.lower().strip(".,!?;:\"'()-।॥")
+                 try:
+                     found    = script_lower.index(wl, char_ptr)
+                     char_ptr = found + len(wl)
+@@ -516,7 +518,7 @@ class AnimationScheduler:
+         script_lower = clean_script.lower()
+         char_ptr     = 0
+         for word in aligned_words:
+-            wl = word.word.lower().strip(".,!?;:\"'()-")
++            wl = word.word.lower().strip(".,!?;:\"'()-।॥")
+             try:
+                 found    = script_lower.index(wl, char_ptr)
+                 end_pos  = found + len(wl)
+@@ -540,7 +542,18 @@ class AnimationScheduler:
+                 t_mid    = t_start + phone.duration * 0.5
+ 
+                 code  = phone.phone.split("_")[0].lower()
+-                shape = "m" if code == "sil" else PHONEME_MAP.get(code, "m")
++                if code == "sil":
++                    shape = "m"
++                else:
++                    shape = resolve_shape(code)
++                    if shape is None:
++                        if code not in _WARNED_PHONES:
++                            _WARNED_PHONES.add(code)
++                            logger.warning(
++                                "Unmapped phone %r -> closed mouth. Add it to "
++                                "PHONEME_MAP / HINDI_PHONEME_MAP.", code
++                            )
++                        shape = "m"
+ 
+                 if shape in _DIPHTHONG_SPLIT:
+                     first_shape, second_shape = _DIPHTHONG_SPLIT[shape]
+@@ -560,7 +573,7 @@ class AnimationScheduler:
+                 this_end = word_end_char[word_idx]
+                 try:
+                     next_word    = aligned_words[word_idx + 1]
+-                    nw_text      = next_word.word.lower().strip(".,!?;:\"'()-")
++                    nw_text      = next_word.word.lower().strip(".,!?;:\"'()-।॥")
+                     nw_found     = script_lower.index(nw_text, this_end)
+                     between_text = clean_script[this_end:nw_found]
+                     has_lb       = "\n" in between_text
+diff --git a/src/subtitle_generator.py b/src/subtitle_generator.py
+index 22e7d0a..22bf0ec 100644
+--- a/src/subtitle_generator.py
++++ b/src/subtitle_generator.py
+@@ -24,7 +24,7 @@ ScaledBorderAndShadow: yes
+ 
+ [V4+ Styles]
+ Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+-Style: Default,Arial,52,&H0000FFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,2,60,60,50,1
++Style: Default,{font},52,&H0000FFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,2,60,60,50,1
+ 
+ [Events]
+ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+@@ -80,7 +80,12 @@ def _chunk_words(aligned_words) -> List[List]:
+     return chunks
+ 
+ 
+-def generate_ass(aligned_words, output_path: str | Path) -> Path:
++def generate_ass(
++    aligned_words,
++    output_path: str | Path,
++    font: str = "Arial",
++    upper: bool = True,
++) -> Path:
+     """
+     Build a .ass subtitle file from Gentle-aligned words.
+ 
+@@ -97,12 +102,12 @@ def generate_ass(aligned_words, output_path: str | Path) -> Path:
+     chunks = _chunk_words(aligned_words)
+     logger.info(f"Subtitle chunking: {len(aligned_words)} words → {len(chunks)} subtitle events")
+ 
+-    lines: List[str] = [_ASS_HEADER]
++    lines: List[str] = [_ASS_HEADER.replace("{font}", font)]
+ 
+     for chunk in chunks:
+         start = _to_ass_time(chunk[0].start_time)
+         end   = _to_ass_time(chunk[-1].end_time)
+-        text  = " ".join(w.word.upper() for w in chunk)  # uppercase like JarToon
++        text  = " ".join((w.word.upper() if upper else w.word) for w in chunk)  # uppercase like JarToon (en only)
+ 
+         # ASS Dialogue line
+         lines.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{text}")
