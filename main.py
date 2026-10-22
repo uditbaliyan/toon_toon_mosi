@@ -17,7 +17,6 @@ from src.compositor import FFmpegCompositor
 from src.config import (
     BACKGROUND_MUSIC_VOLUME,
     FRAME_RATE,
-    LANGUAGE_PRESETS,
 )
 from src.parser import ScriptParser
 from src.renderer import FrameRenderer
@@ -102,12 +101,6 @@ def main():
         default="true",
         choices=["true", "false"],
         help="Burn JarToon-style subtitles into the output video",
-    )
-    parser.add_argument(
-        "--lang",
-        default="en",
-        choices=sorted(LANGUAGE_PRESETS),
-        help="Narration language (mfa backend: picks dictionary/acoustic model; also subtitle font)",
     )
     parser.add_argument(
         "--aligner",
@@ -198,7 +191,7 @@ def main():
     logger.info(f"Running forced aligner: {args.aligner}")
     try:
         aligner = (
-            MFAAligner(mfa_bin=args.mfa_bin, lang=args.lang)
+            MFAAligner(mfa_bin=args.mfa_bin)
             if args.aligner == "mfa"
             else GentleAligner()
         )
@@ -244,13 +237,7 @@ def main():
         try:
             # Place the .ass file alongside the output video
             subtitles_path = output_path.with_suffix(".ass")
-            preset = LANGUAGE_PRESETS[args.lang]
-            generate_ass(
-                aligned_words,
-                subtitles_path,
-                font=preset["subtitle_font"],
-                upper=preset["subtitle_upper"],
-            )
+            generate_ass(aligned_words, subtitles_path)
             print(f"[ToonToon] Subtitles written → {subtitles_path.name}")
             logger.info(f"Subtitle file ready: {subtitles_path.resolve()}")
         except Exception as e:

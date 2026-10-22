@@ -70,8 +70,6 @@ from .config import (
     FRAME_RATE,
     POSE_COUNT,
     PHONEME_MAP,
-    resolve_shape,
-    _WARNED_PHONES,
     MOUTH_SHAPE_CODES,
     POSE_CHANGE_MIN_SECONDS,
     POSE_CHANGE_MAX_SECONDS,
@@ -141,7 +139,7 @@ def _build_char_frame_map(aligned_words, clean_script, frame_count):
         j = i
         while j < n_chars and not clean_script[j].isspace():
             j += 1
-        token = clean_script[i:j].lower().strip(".,!?;:\"'()-।॥")
+        token = clean_script[i:j].lower().strip(".,!?;:\"'()-")
         if token:
             script_tokens.append((i, j, token))
         i = j
@@ -154,7 +152,7 @@ def _build_char_frame_map(aligned_words, clean_script, frame_count):
             gidx = gentle_idx + lookahead
             if gidx >= len(word_timing):
                 break
-            gentle_token = word_timing[gidx][0].strip(".,!?;:\"'()-।॥")
+            gentle_token = word_timing[gidx][0].strip(".,!?;:\"'()-")
             if gentle_token == token:
                 start_t, end_t = word_timing[gidx][1], word_timing[gidx][2]
                 gentle_idx = gidx + 1
@@ -405,7 +403,7 @@ class AnimationScheduler:
             for word in aligned_words:
                 if word.start_time is None:
                     continue
-                wl = word.word.lower().strip(".,!?;:\"'()-।॥")
+                wl = word.word.lower().strip(".,!?;:\"'()-")
                 try:
                     found    = script_lower.index(wl, char_ptr)
                     char_ptr = found + len(wl)
@@ -518,7 +516,7 @@ class AnimationScheduler:
         script_lower = clean_script.lower()
         char_ptr     = 0
         for word in aligned_words:
-            wl = word.word.lower().strip(".,!?;:\"'()-।॥")
+            wl = word.word.lower().strip(".,!?;:\"'()-")
             try:
                 found    = script_lower.index(wl, char_ptr)
                 end_pos  = found + len(wl)
@@ -542,18 +540,7 @@ class AnimationScheduler:
                 t_mid    = t_start + phone.duration * 0.5
 
                 code  = phone.phone.split("_")[0].lower()
-                if code == "sil":
-                    shape = "m"
-                else:
-                    shape = resolve_shape(code)
-                    if shape is None:
-                        if code not in _WARNED_PHONES:
-                            _WARNED_PHONES.add(code)
-                            logger.warning(
-                                "Unmapped phone %r -> closed mouth. Add it to "
-                                "PHONEME_MAP / HINDI_PHONEME_MAP.", code
-                            )
-                        shape = "m"
+                shape = "m" if code == "sil" else PHONEME_MAP.get(code, "m")
 
                 if shape in _DIPHTHONG_SPLIT:
                     first_shape, second_shape = _DIPHTHONG_SPLIT[shape]
@@ -573,7 +560,7 @@ class AnimationScheduler:
                 this_end = word_end_char[word_idx]
                 try:
                     next_word    = aligned_words[word_idx + 1]
-                    nw_text      = next_word.word.lower().strip(".,!?;:\"'()-।॥")
+                    nw_text      = next_word.word.lower().strip(".,!?;:\"'()-")
                     nw_found     = script_lower.index(nw_text, this_end)
                     between_text = clean_script[this_end:nw_found]
                     has_lb       = "\n" in between_text

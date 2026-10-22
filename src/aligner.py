@@ -48,14 +48,12 @@ import re
 import shutil
 import subprocess
 import tempfile
-import unicodedata
 from dataclasses import replace
 from pathlib import Path
 from typing import List
 
 import requests
 
-from .config import LANGUAGE_PRESETS
 from .models import AlignedWord, PhonemeInterval
 
 
@@ -185,7 +183,7 @@ _STRESS_DIGIT_RE = re.compile(r"\d+$")
 
 # MFA labels out-of-dictionary words "<unk>" (phones: "spn").
 _OOV_LABEL = "<unk>"
-_EDGE_PUNCT = ".,!?;:\"'()-।॥"  # same strip set scheduler.py uses when matching words
+_EDGE_PUNCT = ".,!?;:\"'()-"  # same strip set scheduler.py uses when matching words
 
 
 def _restore_oov(words: List[AlignedWord], transcript: str) -> List[AlignedWord]:
@@ -233,7 +231,6 @@ class MFAAligner:
         num_jobs: int = 2,
         clean: bool = False,
         timeout: int = 1800,
-        lang: str = "en",
     ):
         """
         Args:
@@ -254,17 +251,7 @@ class MFAAligner:
                 invocation; turn on if you hit stale-state errors across
                 repeated calls in one notebook session.
             timeout: Max seconds to wait for a single align() call.
-            lang: "en" or "hi". When dictionary/acoustic_model are left at
-                their English defaults, the preset for `lang` supplies them.
-                "hi" also cleans the transcript (danda etc.) and adds Epitran
-                pronunciations for words missing from hindi_cv.
         """
-        preset = LANGUAGE_PRESETS[lang]
-        if dictionary == "english_us_arpa":
-            dictionary = preset["dictionary"]
-        if acoustic_model == "english_us_arpa":
-            acoustic_model = preset["acoustic_model"]
-        self.lang = lang
         self.mfa_bin = mfa_bin
         self.mfa_bin_dir = str(Path(mfa_bin).parent)
         self.dictionary = dictionary
@@ -321,25 +308,13 @@ class MFAAligner:
 
             stem = audio_path.stem
             shutil.copy(audio_path, corpus_dir / f"{stem}{audio_path.suffix}")
-            mfa_text = transcript
-            dictionary = self.dictionary
-            if self.lang == "hi":
-                from . import hindi
-
-                mfa_text = hindi.prepare_transcript(transcript)
-                base = hindi.find_dictionary(self.dictionary, self.mfa_bin)
-                extended = hindi.build_oov_dictionary(
-                    transcript, base, tmp / "hindi_extended.dict"
-                )
-                if extended is not None:
-                    dictionary = str(extended)
-            (corpus_dir / f"{stem}.txt").write_text(mfa_text, encoding="utf-8")
+            (corpus_dir / f"{stem}.txt").write_text(transcript, encoding="utf-8")
 
             cmd = [
                 self.mfa_bin,
                 "align",
                 str(corpus_dir),
-                dictionary,
+                self.dictionary,
                 self.acoustic_model,
                 str(output_dir),
                 "--single_speaker",
@@ -419,7 +394,7 @@ class MFAAligner:
 
     @staticmethod
     def _normalize_phone(label: str) -> str:
-        label = unicodedata.normalize("NFC", label.strip().lower())
+        label = label.strip().lower()
         if label in _MFA_SILENCE_LABELS:
             return "sil"
         return _STRESS_DIGIT_RE.sub("", label) or "sil"

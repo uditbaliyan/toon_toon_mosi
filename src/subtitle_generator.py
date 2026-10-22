@@ -24,7 +24,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font},52,&H0000FFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,2,60,60,50,1
+Style: Default,Arial,52,&H0000FFFF,&H000000FF,&H00000000,&H64000000,-1,0,0,0,100,100,0,0,1,3,0,2,60,60,50,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -80,12 +80,7 @@ def _chunk_words(aligned_words) -> List[List]:
     return chunks
 
 
-def generate_ass(
-    aligned_words,
-    output_path: str | Path,
-    font: str = "Arial",
-    upper: bool = True,
-) -> Path:
+def generate_ass(aligned_words, output_path: str | Path) -> Path:
     """
     Build a .ass subtitle file from Gentle-aligned words.
 
@@ -102,12 +97,12 @@ def generate_ass(
     chunks = _chunk_words(aligned_words)
     logger.info(f"Subtitle chunking: {len(aligned_words)} words → {len(chunks)} subtitle events")
 
-    lines: List[str] = [_ASS_HEADER.replace("{font}", font)]
+    lines: List[str] = [_ASS_HEADER]
 
     for chunk in chunks:
         start = _to_ass_time(chunk[0].start_time)
         end   = _to_ass_time(chunk[-1].end_time)
-        text  = " ".join((w.word.upper() if upper else w.word) for w in chunk)  # uppercase like JarToon (en only)
+        text  = " ".join(w.word.upper() for w in chunk)  # uppercase like JarToon
 
         # ASS Dialogue line
         lines.append(f"Dialogue: 0,{start},{end},Default,,0,0,0,,{text}")
