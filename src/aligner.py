@@ -229,7 +229,7 @@ class MFAAligner:
         dictionary: str = "english_us_arpa",
         acoustic_model: str = "english_us_arpa",
         num_jobs: int = 2,
-        clean: bool = False,
+        clean: bool = True,
         timeout: int = 1800,
     ):
         """
@@ -246,10 +246,13 @@ class MFAAligner:
             num_jobs: Parallel Kaldi jobs (moot for a single utterance, kept
                 low). --single_speaker is always passed so a single speaker's
                 one utterance doesn't trigger MFA's job-count warning.
-            clean: Pass --clean to force MFA to wipe its own internal temp/
-                cache dir first. Off by default to match the verified-working
-                invocation; turn on if you hit stale-state errors across
-                repeated calls in one notebook session.
+            clean: Pass --clean so MFA wipes its per-corpus cache
+                (~/Documents/MFA/<corpus dir name>) before running. ON by
+                default: MFA keys that cache on the corpus dir's basename, and
+                our corpus lives in a fresh tempdir every call, so without
+                --clean a second call in the same session can reuse the first
+                call's cached DB, whose audio paths point at a deleted tempdir
+                (soundfile "System error" in analyze_alignments).
             timeout: Max seconds to wait for a single align() call.
         """
         self.mfa_bin = mfa_bin
@@ -302,7 +305,7 @@ class MFAAligner:
 
         with tempfile.TemporaryDirectory(prefix="toontoon_mfa_") as tmp_str:
             tmp = Path(tmp_str)
-            corpus_dir = tmp / "corpus"
+            corpus_dir = tmp / "toontoon_corpus"
             output_dir = tmp / "output"
             corpus_dir.mkdir()
 
