@@ -85,14 +85,6 @@ def main():
     parser.add_argument("--script", required=True, help="Annotated script (.txt)")
     parser.add_argument("--audio", required=True, help="Voice audio track (.wav)")
     parser.add_argument(
-        "--lang",
-        "--language",
-        dest="lang",
-        default="en",
-        choices=["en", "english", "hi", "hindi"],
-        help="Script language for parsing and normalization (en or hi)",
-    )
-    parser.add_argument(
         "--character", default="cary", help="Character assets folder name"
     )
     parser.add_argument("--output", required=True, help="Output video (.mp4)")
@@ -133,7 +125,6 @@ def main():
     # Parse string flags to booleans
     args.use_blender = args.use_blender.lower() == "true"
     args.subtitles = args.subtitles.lower() == "true"
-    args.lang = {"english": "en", "hindi": "hi"}.get(args.lang, args.lang.lower())
 
     logger.info("================ Pipeline Initialization ================")
     logger.info(f"Arguments parsed: {vars(args)}")
@@ -166,7 +157,7 @@ def main():
     print("[ToonToon] Parsing annotated script...")
     logger.info(f"Reading target script: {script_path.name}")
     try:
-        script_parser = ScriptParser(lang=args.lang)
+        script_parser = ScriptParser()
         script_text = script_path.read_text(encoding="utf-8")
 
         logger.debug("Executing ScriptParser rules on raw input string...")
