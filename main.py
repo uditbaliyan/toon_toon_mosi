@@ -17,6 +17,7 @@ from src.compositor import FFmpegCompositor
 from src.config import (
     BACKGROUND_MUSIC_VOLUME,
     FRAME_RATE,
+    LANGUAGE_PRESETS,
 )
 from src.parser import ScriptParser
 from src.renderer import FrameRenderer
@@ -84,6 +85,14 @@ def main():
     parser.add_argument("--script", required=True, help="Annotated script (.txt)")
     parser.add_argument("--audio", required=True, help="Voice audio track (.wav)")
     parser.add_argument(
+        "--lang",
+        "--language",
+        dest="lang",
+        default="en",
+        choices=["en", "english", "hi", "hindi"],
+        help="Script language for parsing and normalization (en or hi)",
+    )
+    parser.add_argument(
         "--character", default="cary", help="Character assets folder name"
     )
     parser.add_argument("--output", required=True, help="Output video (.mp4)")
@@ -103,6 +112,12 @@ def main():
         help="Burn JarToon-style subtitles into the output video",
     )
     parser.add_argument(
+        "--lang",
+        default="en",
+        choices=sorted(LANGUAGE_PRESETS),
+        help="Narration language (mfa backend: picks dictionary/acoustic model; also subtitle font)",
+    )
+    parser.add_argument(
         "--aligner",
         default="mfa",
         choices=["mfa", "gentle"],
@@ -118,6 +133,7 @@ def main():
     # Parse string flags to booleans
     args.use_blender = args.use_blender.lower() == "true"
     args.subtitles = args.subtitles.lower() == "true"
+    args.lang = {"english": "en", "hindi": "hi"}.get(args.lang, args.lang.lower())
 
     logger.info("================ Pipeline Initialization ================")
     logger.info(f"Arguments parsed: {vars(args)}")
@@ -150,7 +166,7 @@ def main():
     print("[ToonToon] Parsing annotated script...")
     logger.info(f"Reading target script: {script_path.name}")
     try:
-        script_parser = ScriptParser()
+        script_parser = ScriptParser(lang=args.lang)
         script_text = script_path.read_text(encoding="utf-8")
 
         logger.debug("Executing ScriptParser rules on raw input string...")
@@ -191,7 +207,7 @@ def main():
     logger.info(f"Running forced aligner: {args.aligner}")
     try:
         aligner = (
-            MFAAligner(mfa_bin=args.mfa_bin)
+            MFAAligner(mfa_bin=args.mfa_bin, lang=args.lang)
             if args.aligner == "mfa"
             else GentleAligner()
         )
@@ -237,7 +253,13 @@ def main():
         try:
             # Place the .ass file alongside the output video
             subtitles_path = output_path.with_suffix(".ass")
-            generate_ass(aligned_words, subtitles_path)
+            preset = LANGUAGE_PRESETS[args.lang]
+            generate_ass(
+                aligned_words,
+                subtitles_path,
+                font=preset["subtitle_font"],
+                upper=preset["subtitle_upper"],
+            )
             print(f"[ToonToon] Subtitles written → {subtitles_path.name}")
             logger.info(f"Subtitle file ready: {subtitles_path.resolve()}")
         except Exception as e:

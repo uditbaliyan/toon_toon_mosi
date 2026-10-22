@@ -27,24 +27,58 @@ class ScriptMetadata:
 class ScriptParser:
     """
     Processes annotated story scripts.
-    
+
     Extracts:
     - Emotion tags: <happy>, <sad>, <angry>, etc.
     - Formatting markers: Single \n triggers pose change, \n\n increments paragraph
     """
 
-    def __init__(self):
+    _LANG_ALIASES = {
+        "en": "en",
+        "english": "en",
+        "hi": "hi",
+        "hindi": "hi",
+    }
+
+    def __init__(self, lang: str = "en", language: str | None = None):
         """Initialize the parser with precompiled regex patterns."""
+        if language is not None:
+            lang = language
+        self.lang = self._normalize_lang(lang)
         self.emotion_pattern = re.compile(r'<(\w+)>')
         # Matches 2 or more newlines (allowing for accidental trailing whitespace)
-        self.para_pattern = re.compile(r'\n\s*\n') 
+        self.para_pattern = re.compile(r'\n\s*\n')
         self.line_pattern = re.compile(r'\n')
+
+    @classmethod
+    def _normalize_lang(cls, lang: str) -> str:
+        normalized = (lang or "en").strip().lower()
+        return cls._LANG_ALIASES.get(normalized, normalized)
+
+    def _normalize_script_text(self, script_text: str) -> str:
+        """Normalize whitespace and punctuation without stripping valid Unicode script content."""
+        script_text = str(script_text)
+        script_text = script_text.replace("\u00a0", " ")
+        script_text = script_text.replace("\u2011", "-")
+        script_text = script_text.replace("\u2012", "-")
+        script_text = script_text.replace("\u2013", "-")
+        script_text = script_text.replace("\u2014", "-")
+        script_text = script_text.replace("\u2015", "-")
+        script_text = script_text.replace("\ufeff", "")
+
+        if self.lang in {"hi", "hindi"}:
+            script_text = script_text.replace("।", ".")
+            script_text = script_text.replace("॥", ".")
+
+        return script_text
 
     def parse(self, script_text: str) -> ScriptMetadata:
         """
         Parse the script, extract metadata aligned with the final clean text,
         and clean the string of junk formatting tags.
         """
+        script_text = self._normalize_script_text(script_text)
+
         # Step 1: Mimic the old script's structural cleanup safely
         script_text = script_text.replace("-", " ")
         for char in ["[", "]", "/"]:
